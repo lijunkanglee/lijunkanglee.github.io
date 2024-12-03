@@ -69,10 +69,10 @@
       <div class="outer">
         <section id="main">
   
-    <article id="post-测试文章" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+    <article id="post-Spring事务失效的十种常见场景" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
   <div class="article-meta">
-    <a href="/2024/09/01/%E6%B5%8B%E8%AF%95%E6%96%87%E7%AB%A0/" class="article-date">
-  <time class="dt-published" datetime="2024-09-01T07:46:33.000Z" itemprop="datePublished">2024-09-01</time>
+    <a href="/2024/09/03/Spring%E4%BA%8B%E5%8A%A1%E5%A4%B1%E6%95%88%E7%9A%84%E5%8D%81%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%9C%BA%E6%99%AF/" class="article-date">
+  <time class="dt-published" datetime="2024-09-03T02:12:12.000Z" itemprop="datePublished">2024-09-03</time>
 </a>
     
   </div>
@@ -83,7 +83,7 @@
         
   
     <h1 itemprop="name">
-      <a class="p-name article-title" href="/2024/09/01/%E6%B5%8B%E8%AF%95%E6%96%87%E7%AB%A0/">测试文章</a>
+      <a class="p-name article-title" href="/2024/09/03/Spring%E4%BA%8B%E5%8A%A1%E5%A4%B1%E6%95%88%E7%9A%84%E5%8D%81%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%9C%BA%E6%99%AF/">Spring事务失效的十种常见场景</a>
     </h1>
   
 
@@ -91,69 +91,83 @@
     
     <div class="e-content article-entry" itemprop="articleBody">
       
-        <p>这是一篇用于测试的文章</p>
-<p><img src="/2024/09/01/%E6%B5%8B%E8%AF%95%E6%96%87%E7%AB%A0/test.jpeg"></p>
+        <h2 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h2><p>Spring针对Java Transaction API (JTA)、JDBC、Hibernate和Java Persistence API(JPA)等事务 API，实现了一致的编程模型，而Spring的声明式事务功能更是提供了极其方便的事务配置方式，配合Spring Boot的自动配置，大多数Spring Boot项目只需要在方法上标记@Transactional注解，即可一键开启方法的事务性配置。  </p>
+<p>但是，事务如果没有被正确出，很有可能会导致事务的失效，带来意想不到的数据不一致问题，随后就是大量的人工接入查看和修复数据，该篇主要分享Spring事务在技术上的正确使用方式，避免因为事务处理不当导致业务逻辑产生大量偶发性BUG。  </p>
+<p>在分析事务失效的常见场景之前，我们先来了解一下：事务的传播类型 和 @Transactionnal 注解的不同属性的含义。  </p>
+<h4 id="事务的传播类型"><a href="#事务的传播类型" class="headerlink" title="事务的传播类型"></a>事务的传播类型</h4><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">//如果有事务, 那么加入事务, 没有的话新建一个(默认)</span><br><span class="line">@Transactional(propagation=Propagation.REQUIRED)</span><br><span class="line">//容器不为这个方法开启事务 </span><br><span class="line">@Transactional(propagation=Propagation.NOT_SUPPORTED)</span><br><span class="line">//不管是否存在事务, 都创建一个新的事务, 原来的挂起, 新的执行完毕, 继续执行老的事务 </span><br><span class="line">@Transactional(propagation=Propagation.REQUIRES_NEW) </span><br><span class="line">//必须在一个已有的事务中执行, 否则抛出异常</span><br><span class="line">@Transactional(propagation=Propagation.MANDATORY) </span><br><span class="line">//必须在一个没有的事务中执行, 否则抛出异常(与Propagation.MANDATORY相反)</span><br><span class="line">@Transactional(propagation=Propagation.NEVER) </span><br><span class="line">//如果其他bean调用这个方法, 在其他bean中声明事务, 那就用事务, 如果其他bean没有声明事务, 那就不用事务</span><br><span class="line">@Transactional(propagation=Propagation.SUPPORTS) </span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h4 id="isolation"><a href="#isolation" class="headerlink" title="isolation"></a>isolation</h4><p>该属性用于设置底层数据库的事务隔离级别，事务的隔离级别介绍：  </p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">// 读取未提交数据(会出现脏读, 不可重复读) 基本不使用</span><br><span class="line">@Transactional(isolation = Isolation.READ_UNCOMMITTED)</span><br><span class="line">// 读取已提交数据(会出现不可重复读和幻读) Oracle默认</span><br><span class="line">@Transactional(isolation = Isolation.READ_COMMITTED)</span><br><span class="line">// 可重复读(会出现幻读) MySQL默认</span><br><span class="line">@Transactional(isolation = Isolation.REPEATABLE_READ)</span><br><span class="line">// 串行化</span><br><span class="line">@Transactional(isolation = Isolation.SERIALIZABLE)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h4 id="Transactionnal注解属性"><a href="#Transactionnal注解属性" class="headerlink" title="@Transactionnal注解属性"></a>@Transactionnal注解属性</h4><p>@Transactional注解可以作用于接口、接口方法、类以及类方法上，它可以通过不同的参数来选择什么类型Exception异常下执行回滚或者不回滚操作。</p>
+<h2 id="Spring事务失效的场景"><a href="#Spring事务失效的场景" class="headerlink" title="Spring事务失效的场景"></a>Spring事务失效的场景</h2><h4 id="1-事务方法未被Spring管理"><a href="#1-事务方法未被Spring管理" class="headerlink" title="1. 事务方法未被Spring管理"></a>1. 事务方法未被Spring管理</h4><p>如果事务方法所在的类没有注册到Spring IOC容器中，也就是说，事务方法所在类并没有被Spring管理，则Spring事务会失效，举个例子🌰：  </p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">/** * 商品业务实现层 * * @author: austin * @since: 2023/2/10 14:19 */</span><br><span class="line">public class ProductServiceImpl extends ServiceImpl&lt;ProductMapper, Product&gt; implements IProductService &#123;</span><br><span class="line"></span><br><span class="line">    @Autowired</span><br><span class="line">    private ProductMapper productMapper;</span><br><span class="line"></span><br><span class="line">    @Override</span><br><span class="line">    @Transactional(propagation = Propagation.REQUIRES_NEW)</span><br><span class="line">    public void updateProductStockById(Integer stockCount, Long productId) &#123;</span><br><span class="line">        productMapper.updateProductStockById(stockCount, productId);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>ProductServiceImpl实现类上没有添加@Service注解，Product的实例也就没有被加载到Spring IOC容器，此时updateProductStockById()方法的事务就会在Spring中失效。  </p>
+<h4 id="2-方法使用final类型修饰"><a href="#2-方法使用final类型修饰" class="headerlink" title="2. 方法使用final类型修饰"></a>2. 方法使用final类型修饰</h4><p>有时候，某个方法不想被子类重新，这时可以将该方法定义成final的。普通方法这样定义是没问题的，但如果将事务方法定义成final，例如：  </p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">@Service</span><br><span class="line">public class OrderServiceImpl &#123;</span><br><span class="line"></span><br><span class="line">    @Transactional</span><br><span class="line">    public final void cancel(OrderDTO orderDTO) &#123;</span><br><span class="line">        // 取消订单</span><br><span class="line">        cancelOrder(orderDTO);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>OrderServiceImpl的cancel取消订单方法被final修饰符修饰，Spring事务底层使用了AOP，也就是通过JDK动态代理或者cglib，帮我们生成了代理类，在代理类中实现的事务功能。但如果某个方法用final修饰了，那么在它的代理类中，就无法重写该方法，从而无法添加事务功能。这种情况事务就会在Spring中失效。  </p>
+<blockquote>
+<p>💡Tips: 如果某个方法是static的，同样无法通过动态代理将方法声明为事务方法。  </p>
+</blockquote>
+<h4 id="3-非public修饰的方法"><a href="#3-非public修饰的方法" class="headerlink" title="3. 非public修饰的方法"></a>3. 非public修饰的方法</h4><p>如果事务方式不是public修饰，此时Spring事务会失效，举个例子🌰：  </p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">/** * 商品业务实现层 * * @author: austin * @since: 2023/2/10 14:19 */</span><br><span class="line">@Service</span><br><span class="line">public class ProductServiceImpl extends ServiceImpl&lt;ProductMapper, Product&gt; implements IProductService &#123;</span><br><span class="line"></span><br><span class="line">    @Autowired</span><br><span class="line">    private ProductMapper productMapper;</span><br><span class="line"></span><br><span class="line">    @Override</span><br><span class="line">    @Transactional(propagation = Propagation.REQUIRES_NEW)</span><br><span class="line">    private void updateProductStockById(Integer stockCount, String productId) &#123;</span><br><span class="line">        productMapper.updateProductStockById(stockCount, productId);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>虽然ProductServiceImpl添加了@Service注解，同时updateProductStockById()方法上添加了@Transactional(propagation &#x3D; Propagation.REQUIRES_NEW)注解，但是由于事务方法updateProductStockById()被 private 定义为方法内私有，同样Spring事务会失效。  </p>
+<h4 id="4-同一个类中的方法相互调用"><a href="#4-同一个类中的方法相互调用" class="headerlink" title="4. 同一个类中的方法相互调用"></a>4. 同一个类中的方法相互调用</h4><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line">@Service</span><br><span class="line">public class OrderServiceImpl extends ServiceImpl&lt;OrderMapper, Order&gt; implements IOrderService &#123;</span><br><span class="line">    @Autowired</span><br><span class="line">    private OrderMapper orderMapper;</span><br><span class="line">    @Autowired</span><br><span class="line">    private ProductMapper productMapper;</span><br><span class="line"></span><br><span class="line">    @Override</span><br><span class="line">    public ResponseEntity submitOrder(Order order) &#123;</span><br><span class="line">        // 保存生成订单信息</span><br><span class="line">        long orderNo = Math.abs(ThreadLocalRandom.current().nextLong(1000));</span><br><span class="line">        order.setOrderNo(&quot;ORDER_&quot; + orderNo);</span><br><span class="line">        orderMapper.insert(order);</span><br><span class="line"></span><br><span class="line">        // 扣减库存</span><br><span class="line">        this.updateProductStockById(order.getProductId(), 1L);</span><br><span class="line">        return new ResponseEntity(HttpStatus.OK);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    @Transactional(propagation = Propagation.REQUIRES_NEW)</span><br><span class="line">    public void updateProductStockById(Integer num, Long productId) &#123;</span><br><span class="line">        productMapper.updateProductStockById(num, productId);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>submitOrder()方法和updateProductStockById()方法都在OrderService类中，然而submitOrder()方法没有添加事务注解，updateProductStockById()方法虽然添加了事务注解，这种情况updateProductStockById()会在Spring事务中失效。  </p>
+<h4 id="5-方法的事务传播类型不支持事务"><a href="#5-方法的事务传播类型不支持事务" class="headerlink" title="5. 方法的事务传播类型不支持事务"></a>5. 方法的事务传播类型不支持事务</h4><p>如果内部方法的事务传播类型为不支持事务的传播类型，则内部方法的事务同样会在Spring中失效，举个例子：  </p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">@Service</span><br><span class="line">public class OrderServiceImpl extends ServiceImpl&lt;OrderMapper, Order&gt; implements IOrderService &#123;</span><br><span class="line">    @Autowired</span><br><span class="line">    private OrderMapper orderMapper;</span><br><span class="line">    @Autowired</span><br><span class="line">    private ProductMapper productMapper;</span><br><span class="line"></span><br><span class="line">    @Override</span><br><span class="line">    @Transactional(propagation = Propagation.REQUIRES_NEW)</span><br><span class="line">    public ResponseEntity submitOrder(Order order) &#123;</span><br><span class="line">        long orderNo = Math.abs(ThreadLocalRandom.current().nextLong(1000));</span><br><span class="line">        order.setOrderNo(&quot;ORDER_&quot; + orderNo);</span><br><span class="line">        orderMapper.insert(order);</span><br><span class="line"></span><br><span class="line">        // 扣减库存</span><br><span class="line">        this.updateProductStockById(order.getProductId(), 1L);</span><br><span class="line">        return new ResponseEntity(HttpStatus.OK);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"> </span><br><span class="line">    /**     * 扣减库存方法事务类型声明为NOT_SUPPORTED不支持事务的传播     */</span><br><span class="line">    @Transactional(propagation = Propagation.NOT_SUPPORTED)</span><br><span class="line">    public void updateProductStockById(Integer num, Long productId) &#123;</span><br><span class="line">        productMapper.updateProductStockById(num, productId);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h4 id="6-异常被内部catch，程序生吞异常"><a href="#6-异常被内部catch，程序生吞异常" class="headerlink" title="6. 异常被内部catch，程序生吞异常"></a>6. 异常被内部catch，程序生吞异常</h4><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line">@Service</span><br><span class="line">public class OrderServiceImpl extends ServiceImpl&lt;OrderMapper, Order&gt; implements IOrderService &#123;</span><br><span class="line">    @Autowired</span><br><span class="line">    private OrderMapper orderMapper;</span><br><span class="line">    @Autowired</span><br><span class="line">    private ProductMapper productMapper;</span><br><span class="line"></span><br><span class="line">    @Override</span><br><span class="line">    @Transactional(propagation = Propagation.REQUIRES_NEW)</span><br><span class="line">    public ResponseEntity submitOrder(Order order) &#123;</span><br><span class="line">        long orderNo = Math.abs(ThreadLocalRandom.current().nextLong(1000));</span><br><span class="line">        order.setOrderNo(&quot;ORDER_&quot; + orderNo);</span><br><span class="line">        orderMapper.insert(order);</span><br><span class="line"></span><br><span class="line">        // 扣减库存</span><br><span class="line">        this.updateProductStockById(order.getProductId(), 1L);</span><br><span class="line">        return new ResponseEntity(HttpStatus.OK);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    /**     * 扣减库存方法事务类型声明为NOT_SUPPORTED不支持事务的传播     */</span><br><span class="line">    @Transactional(propagation = Propagation.NOT_SUPPORTED)</span><br><span class="line">    public void updateProductStockById(Integer num, Long productId) &#123;</span><br><span class="line">        try &#123;</span><br><span class="line">            productMapper.updateProductStockById(num, productId);</span><br><span class="line">        &#125; catch (Exception e) &#123;</span><br><span class="line">            // 这里仅仅是捕获异常之后的打印（相当于程序吞掉了异常）</span><br><span class="line">            log.error(&quot;Error updating product Stock: &#123;&#125;&quot;, e);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h4 id="7-数据库不支持事务"><a href="#7-数据库不支持事务" class="headerlink" title="7. 数据库不支持事务"></a>7. 数据库不支持事务</h4><p>Spring事务生效的前提是连接的数据库支持事务，如果底层的数据库都不支持事务，则Spring事务肯定会失效的，例如🌰：使用MySQL数据库，选用MyISAM存储引擎，因为MyISAM存储引擎本身不支持事务，因此事务毫无疑问会失效。  </p>
+<h4 id="8-未配置开启事务"><a href="#8-未配置开启事务" class="headerlink" title="8. 未配置开启事务"></a>8. 未配置开启事务</h4><p>如果项目中没有配置Spring的事务管理器，即使使用了Spring的事务管理功能，Spring的事务也不会生效，例如，如果你是Spring Boot项目，没有在SpringBoot项目中配置如下代码：  </p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">@Bean</span><br><span class="line">public PlatformTransactionManager transactionManager(DataSource dataSource) &#123;</span><br><span class="line">    return new DataSourceTransactionManager(dataSource);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>如果是以往的Spring MVC项目，如果没有配置下面的代码，Spring事务也不会生效，正常需要在applicationContext.xml文件中，手动配置事务相关参数，比如：  </p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">&lt;!-- 配置事务管理器 --&gt; </span><br><span class="line">&lt;bean class=&quot;org.springframework.jdbc.datasource.DataSourceTransactionManager&quot; id=&quot;transactionManager&quot;&gt; </span><br><span class="line">    &lt;property name=&quot;dataSource&quot; ref=&quot;dataSource&quot;&gt;&lt;/property&gt; </span><br><span class="line">&lt;/bean&gt; </span><br><span class="line">&lt;tx:advice id=&quot;advice&quot; transaction-manager=&quot;transactionManager&quot;&gt; </span><br><span class="line">    &lt;tx:attributes&gt; </span><br><span class="line">        &lt;tx:method name=&quot;*&quot; propagation=&quot;REQUIRED&quot;/&gt;</span><br><span class="line">    &lt;/tx:attributes&gt; </span><br><span class="line">&lt;/tx:advice&gt; </span><br><span class="line">&lt;!-- 用切点把事务切进去 --&gt; </span><br><span class="line">&lt;aop:config&gt; </span><br><span class="line">    &lt;aop:pointcut expression=&quot;execution(* com.universal.ubdk.*.*(..))&quot; id=&quot;pointcut&quot;/&gt; </span><br><span class="line">    &lt;aop:advisor advice-ref=&quot;advice&quot; pointcut-ref=&quot;pointcut&quot;/&gt; </span><br><span class="line">&lt;/aop:config&gt; </span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h4 id="9-错误的传播特性"><a href="#9-错误的传播特性" class="headerlink" title="9. 错误的传播特性"></a>9. 错误的传播特性</h4><p>其实，我们在使用@Transactional注解时，是可以指定propagation参数的。  </p>
+<p>该参数的作用是指定事务的传播特性，目前Spring支持7种传播特性：  </p>
+<ul>
+<li><p>REQUIRED 如果当前上下文中存在事务，那么加入该事务，如果不存在事务，创建一个事务，这是默认的传播属性值。  </p>
+</li>
+<li><p>SUPPORTS 如果当前上下文存在事务，则支持事务加入事务，如果不存在事务，则使用非事务的方式执行。  </p>
+</li>
+<li><p>MANDATORY 如果当前上下文中存在事务，否则抛出异常。  </p>
+</li>
+<li><p>REQUIRES_NEW 每次都会新建一个事务，并且同时将上下文中的事务挂起，执行当前新建事务完成以后，上下文事务恢复再执行。  </p>
+</li>
+<li><p>NOT_SUPPORTED 如果当前上下文中存在事务，则挂起当前事务，然后新的方法在没有事务的环境中执行。  </p>
+</li>
+<li><p>NEVER 如果当前上下文中存在事务，则抛出异常，否则在无事务环境上执行代码。  </p>
+</li>
+<li><p>NESTED 如果当前上下文中存在事务，则嵌套事务执行，如果不存在事务，则新建事务。</p>
+</li>
+</ul>
+<p>如果我们在手动设置propagation参数的时候，把传播特性设置错了，比如：  </p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">@Service</span><br><span class="line">public class OrderServiceImpl &#123;</span><br><span class="line"></span><br><span class="line">    @Transactional(propagation = Propagation.NEVER)</span><br><span class="line">    public void cancelOrder(UserModel userModel) &#123;</span><br><span class="line">        // 取消订单</span><br><span class="line">        cancelOrder(orderDTO);</span><br><span class="line">        // 还原库存</span><br><span class="line">        restoreProductStock(orderDTO.getProductId(), orderDTO.getProductCount());</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>我们可以看到cancelOrder()方法的事务传播特性定义成了Propagation.NEVER，这种类型的传播特性不支持事务，如果有事务则会抛异常。  </p>
+<h4 id="10-多线程调用"><a href="#10-多线程调用" class="headerlink" title="10. 多线程调用"></a>10. 多线程调用</h4><p>在实际项目开发中，多线程的使用场景还是挺多的。如果Spring事务用在多线程场景中使用不当，也会导致事务无法生效。  </p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">@Slf4j</span><br><span class="line">@Service</span><br><span class="line">public class OrderServiceImpl &#123;</span><br><span class="line"></span><br><span class="line">    @Autowired</span><br><span class="line">    private OrderMapper orderMapper;</span><br><span class="line">    @Autowired</span><br><span class="line">    private MessageService messageService;</span><br><span class="line"></span><br><span class="line">    @Transactional</span><br><span class="line">    public void orderCommit(orderModel orderModel) throws Exception &#123;</span><br><span class="line">        orderMapper.insertOrder(orderModel);</span><br><span class="line">        new Thread(() -&gt; &#123;</span><br><span class="line">            messageService.sendSms();</span><br><span class="line">        &#125;).start();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">@Service</span><br><span class="line">public class MessageService &#123;</span><br><span class="line"></span><br><span class="line">    @Transactional</span><br><span class="line">    public void sendSms() &#123;</span><br><span class="line">        // 发送短信</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>通过示例，我们可以看到订单提交的事务方法orderCommit()中，调用了发送短信的事务方法sendSms()，但是发送短信的事务方法sendSms()是另起了一个线程调用的。  </p>
+<p>这样会导致两个方法不在同一个线程中，从而是两个不同的事务。如果是sendSms()方法中抛了异常，orderCommit()方法也回滚是不可能的。  </p>
+<p>实际上，Spring的事务是通过ThreadLocal来保证线程安全的，事务和当前线程绑定，多个线程自然会让事务失效。  </p>
 
       
     </div>
     <footer class="article-footer">
-      <a data-url="http://example.com/2024/09/01/%E6%B5%8B%E8%AF%95%E6%96%87%E7%AB%A0/" data-id="cm2hm0jly00017je22dm95fvt" data-title="测试文章" class="article-share-link"><span class="fa fa-share">分享</span></a>
+      <a data-url="http://example.com/2024/09/03/Spring%E4%BA%8B%E5%8A%A1%E5%A4%B1%E6%95%88%E7%9A%84%E5%8D%81%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%9C%BA%E6%99%AF/" data-id="cm47u645f0000tv2g0oze7i7b" data-title="Spring事务失效的十种常见场景" class="article-share-link"><span class="fa fa-share">分享</span></a>
       
       
       
-  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E6%B5%8B%E8%AF%95/" rel="tag">测试</a></li></ul>
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Java/" rel="tag">Java</a></li></ul>
 
-    </footer>
-  </div>
-  
-</article>
-
-
-
-  
-    <article id="post-hello-world" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
-  <div class="article-meta">
-    <a href="/2024/09/01/hello-world/" class="article-date">
-  <time class="dt-published" datetime="2024-09-01T03:27:13.915Z" itemprop="datePublished">2024-09-01</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="p-name article-title" href="/2024/09/01/hello-world/">Hello World</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="e-content article-entry" itemprop="articleBody">
-      
-        <p>Welcome to <a target="_blank" rel="noopener" href="https://hexo.io/">Hexo</a>! This is your very first post. Check <a target="_blank" rel="noopener" href="https://hexo.io/docs/">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a target="_blank" rel="noopener" href="https://hexo.io/docs/troubleshooting.html">troubleshooting</a> or you can ask me on <a target="_blank" rel="noopener" href="https://github.com/hexojs/hexo/issues">GitHub</a>.</p>
-<h2 id="Quick-Start"><a href="#Quick-Start" class="headerlink" title="Quick Start"></a>Quick Start</h2><h3 id="Create-a-new-post"><a href="#Create-a-new-post" class="headerlink" title="Create a new post"></a>Create a new post</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo new <span class="string">&quot;My New Post&quot;</span></span><br></pre></td></tr></table></figure>
-
-<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/writing.html">Writing</a></p>
-<h3 id="Run-server"><a href="#Run-server" class="headerlink" title="Run server"></a>Run server</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo server</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/server.html">Server</a></p>
-<h3 id="Generate-static-files"><a href="#Generate-static-files" class="headerlink" title="Generate static files"></a>Generate static files</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo generate</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/generating.html">Generating</a></p>
-<h3 id="Deploy-to-remote-sites"><a href="#Deploy-to-remote-sites" class="headerlink" title="Deploy to remote sites"></a>Deploy to remote sites</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo deploy</span><br></pre></td></tr></table></figure>
-
-<p>More info: <a target="_blank" rel="noopener" href="https://hexo.io/docs/one-command-deployment.html">Deployment</a></p>
-
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="http://example.com/2024/09/01/hello-world/" data-id="cm2hm0jlt00007je22ehq60vk" data-title="Hello World" class="article-share-link"><span class="fa fa-share">分享</span></a>
-      
-      
-      
     </footer>
   </div>
   
@@ -175,7 +189,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">标签</h3>
     <div class="widget">
-      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/%E6%B5%8B%E8%AF%95/" rel="tag">测试</a></li></ul>
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/Java/" rel="tag">Java</a></li></ul>
     </div>
   </div>
 
@@ -185,7 +199,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">标签云</h3>
     <div class="widget tagcloud">
-      <a href="/tags/%E6%B5%8B%E8%AF%95/" style="font-size: 10px;">测试</a>
+      <a href="/tags/Java/" style="font-size: 10px;">Java</a>
     </div>
   </div>
 
@@ -207,11 +221,7 @@
       <ul>
         
           <li>
-            <a href="/2024/09/01/%E6%B5%8B%E8%AF%95%E6%96%87%E7%AB%A0/">测试文章</a>
-          </li>
-        
-          <li>
-            <a href="/2024/09/01/hello-world/">Hello World</a>
+            <a href="/2024/09/03/Spring%E4%BA%8B%E5%8A%A1%E5%A4%B1%E6%95%88%E7%9A%84%E5%8D%81%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%9C%BA%E6%99%AF/">Spring事务失效的十种常见场景</a>
           </li>
         
       </ul>
